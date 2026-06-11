@@ -1,17 +1,23 @@
+const http = require("http");
 const { WebSocketServer } = require("ws");
 const PORT = process.env.PORT || 8787;
-const wss = new WebSocketServer({ port: PORT });
 const rooms = new Map(); // roomCode -> { host, companions: Map<id,{ws,name}> }
 
 const send = (ws, obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
 
+// Servidor HTTP (health check do Render) + WebSocket no mesmo port
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Nokotuber relay OK");
+});
+const wss = new WebSocketServer({ server });
+
 wss.on("connection", (ws) => {
-  ws.role = null; ws.roomCode = null; ws.clientId = null;
-  ws._times = [];
+  ws.role = null; ws.roomCode = null; ws.clientId = null; ws._times = [];
 
   ws.on("message", (data) => {
-    if (data.length > 8192) return;                  // payload grande: descarta
-    const now = Date.now();                          // rate-limit ~40 msg/s
+    if (data.length > 8192) return;
+    const now = Date.now();
     ws._times = ws._times.filter((t) => now - t < 1000);
     if (ws._times.length > 40) return;
     ws._times.push(now);
@@ -61,4 +67,5 @@ wss.on("connection", (ws) => {
     if (!room.host && room.companions.size === 0) rooms.delete(ws.roomCode);
   });
 });
-console.log("Nokotuber relay rodando na porta " + PORT);
+
+server.listen(PORT, () => console.log("Nokotuber relay rodando na porta " + PORT));
